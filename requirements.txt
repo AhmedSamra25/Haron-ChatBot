@@ -74,3 +74,5 @@ factory-boy>=3.3.0
 rich>=13.7.0
 tqdm>=4.66.0
 typing-extensions>=4.8.0
+
+Add gunicorn to requirements
