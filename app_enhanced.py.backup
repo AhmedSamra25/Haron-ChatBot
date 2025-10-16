@@ -1,0 +1,2071 @@
+#!/usr/bin/env python3
+"""
+Business bel Arabi RAG - Enhanced Streamlit Application
+
+Advanced UI with history management, better styling, and comprehensive features.
+Run with: streamlit run app_enhanced.py
+"""
+
+import streamlit as st
+import pandas as pd
+import json
+import sqlite3
+from datetime import datetime, timedelta
+import os
+import sys
+import requests
+import re
+import time
+import threading
+from pathlib import Path
+from typing import Optional, Dict, List, Any, Tuple
+import traceback
+from dotenv import load_dotenv
+import hashlib
+import uuid
+
+# Load environment variables
+load_dotenv()
+
+# Page configuration
+st.set_page_config(
+    page_title="Business bel Arabi - CEO Expert",
+    page_icon="🎙️",
+    layout="wide",
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'https://github.com/your-repo',
+        'Report a bug': "mailto:support@businessbelarabi.com",
+        'About': "# Business bel Arabi CEO Expert\n\nAI-powered business advisor in Arabic!"
+    }
+)
+
+# Enhanced CSS styling
+st.markdown("""
+<style>
+    /* Main theme */
+    .main .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        max-width: 1200px;
+    }
+    
+    /* LTR support for English */
+    .ltr-text {
+        direction: ltr;
+        text-align: left;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    /* Custom chat styling */
+    .chat-container {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+    
+    .chat-message {
+        padding: 1rem 1.5rem;
+        border-radius: 12px;
+        margin: 0.75rem 0;
+        position: relative;
+        max-width: 85%;
+        word-wrap: break-word;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .user-message {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        color: white;
+        margin-left: auto;
+        margin-right: 0;
+        border-bottom-right-radius: 4px;
+    }
+    
+    .assistant-message {
+        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        color: #333;
+        margin-left: 0;
+        margin-right: auto;
+        border-bottom-left-radius: 4px;
+    }
+    
+    .system-message {
+        background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+        color: #333;
+        margin: 0 auto;
+        text-align: center;
+        font-style: italic;
+    }
+    
+    /* Sidebar styling */
+    .sidebar .sidebar-content {
+        background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    /* Metrics and cards */
+    .metric-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        margin: 1rem 0;
+        border-left: 4px solid #667eea;
+    }
+    
+    .status-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: bold;
+        display: inline-block;
+        margin: 0.25rem;
+    }
+    
+    .status-success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .status-warning {
+        background-color: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffeaa7;
+    }
+    
+    .status-error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    /* History table styling */
+    .history-table {
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Button enhancements */
+    .stButton > button {
+        border-radius: 8px;
+        border: none;
+        padding: 0.5rem 1.5rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    /* Input field styling */
+    .stTextInput > div > div > input,
+    .stTextArea > div > div > textarea {
+        border-radius: 8px;
+        border: 2px solid #e0e0e0;
+        padding: 0.75rem;
+    }
+    
+    .stTextInput > div > div > input:focus,
+    .stTextArea > div > div > textarea:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    /* Loading animation */
+    .loading-spinner {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #667eea;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-right: 10px;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    /* Responsive design */
+    @media (max-width: 768px) {
+        .chat-message {
+            max-width: 95%;
+        }
+        .main .block-container {
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+    }
+    
+    /* Custom scrollbar */
+    .chat-container::-webkit-scrollbar {
+        width: 8px;
+    }
+    
+    .chat-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 4px;
+    }
+    
+    .chat-container::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 4px;
+    }
+    
+    .chat-container::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+class DatabaseManager:
+    """Enhanced database manager for conversation history and analytics."""
+    
+    def __init__(self, db_path: str = "business_bel_arabi.db"):
+        self.db_path = db_path
+        self.init_database()
+    
+    def init_database(self):
+        """Initialize SQLite database with proper schema."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    user_message TEXT NOT NULL,
+                    assistant_response TEXT NOT NULL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    user_rating INTEGER DEFAULT NULL,
+                    response_time REAL DEFAULT NULL,
+                    context_used BOOLEAN DEFAULT FALSE,
+                    model_used TEXT DEFAULT NULL,
+                    message_hash TEXT NOT NULL,
+                    UNIQUE(message_hash)
+                )
+            """)
+            
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS sessions (
+                    session_id TEXT PRIMARY KEY,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    total_messages INTEGER DEFAULT 0,
+                    session_name TEXT DEFAULT NULL
+                )
+            """)
+            
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS system_metrics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    metric_name TEXT NOT NULL,
+                    metric_value TEXT NOT NULL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Create indexes for better performance
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_session_id ON conversations(session_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_timestamp ON conversations(timestamp)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity)")
+    
+    def save_conversation(self, session_id: str, user_message: str, assistant_response: str, 
+                         response_time: float = None, context_used: bool = False, 
+                         model_used: str = "simple") -> str:
+        """Save conversation to database."""
+        conversation_id = str(uuid.uuid4())
+        message_hash = hashlib.md5(f"{session_id}_{user_message}_{assistant_response}".encode()).hexdigest()
+        
+        with sqlite3.connect(self.db_path) as conn:
+            # Save conversation
+            conn.execute("""
+                INSERT OR REPLACE INTO conversations 
+                (id, session_id, user_message, assistant_response, response_time, 
+                 context_used, model_used, message_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (conversation_id, session_id, user_message, assistant_response, 
+                  response_time, context_used, model_used, message_hash))
+            
+            # Update or create session
+            conn.execute("""
+                INSERT OR REPLACE INTO sessions (session_id, last_activity, total_messages)
+                VALUES (?, CURRENT_TIMESTAMP, 
+                        COALESCE((SELECT total_messages FROM sessions WHERE session_id = ?), 0) + 1)
+            """, (session_id, session_id))
+        
+        return conversation_id
+    
+    def get_conversation_history(self, session_id: str = None, limit: int = 100) -> List[Dict]:
+        """Get conversation history with optional session filtering."""
+        with sqlite3.connect(self.db_path) as conn:
+            if session_id:
+                cursor = conn.execute("""
+                    SELECT id, session_id, user_message, assistant_response, timestamp, 
+                           user_rating, response_time, context_used, model_used
+                    FROM conversations 
+                    WHERE session_id = ? 
+                    ORDER BY timestamp DESC 
+                    LIMIT ?
+                """, (session_id, limit))
+            else:
+                cursor = conn.execute("""
+                    SELECT id, session_id, user_message, assistant_response, timestamp, 
+                           user_rating, response_time, context_used, model_used
+                    FROM conversations 
+                    ORDER BY timestamp DESC 
+                    LIMIT ?
+                """, (limit,))
+            
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    
+    def get_sessions(self, limit: int = 50) -> List[Dict]:
+        """Get all sessions with statistics."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
+                SELECT s.session_id, s.created_at, s.last_activity, s.total_messages,
+                       COALESCE(s.session_name, 'Session ' || SUBSTR(s.session_id, 1, 8)) as session_name,
+                       AVG(c.response_time) as avg_response_time,
+                       AVG(c.user_rating) as avg_rating
+                FROM sessions s
+                LEFT JOIN conversations c ON s.session_id = c.session_id
+                GROUP BY s.session_id
+                ORDER BY s.last_activity DESC
+                LIMIT ?
+            """, (limit,))
+            
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    
+    def search_conversations(self, query: str, limit: int = 50) -> List[Dict]:
+        """Search conversations by content."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("""
+                SELECT id, session_id, user_message, assistant_response, timestamp,
+                       user_rating, response_time, context_used, model_used
+                FROM conversations 
+                WHERE user_message LIKE ? OR assistant_response LIKE ?
+                ORDER BY timestamp DESC 
+                LIMIT ?
+            """, (f"%{query}%", f"%{query}%", limit))
+            
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    
+    def get_analytics_data(self) -> Dict[str, Any]:
+        """Get comprehensive analytics data."""
+        with sqlite3.connect(self.db_path) as conn:
+            # Total conversations
+            total_conversations = conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+            
+            # Total sessions
+            total_sessions = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+            
+            # Average response time
+            avg_response_time = conn.execute(
+                "SELECT AVG(response_time) FROM conversations WHERE response_time IS NOT NULL"
+            ).fetchone()[0] or 0
+            
+            # Today's conversations
+            today_conversations = conn.execute("""
+                SELECT COUNT(*) FROM conversations 
+                WHERE date(timestamp) = date('now')
+            """).fetchone()[0]
+            
+            # This week's conversations
+            week_conversations = conn.execute("""
+                SELECT COUNT(*) FROM conversations 
+                WHERE timestamp >= date('now', '-7 days')
+            """).fetchone()[0]
+            
+            # Most active session
+            most_active_session = conn.execute("""
+                SELECT session_id, COUNT(*) as message_count 
+                FROM conversations 
+                GROUP BY session_id 
+                ORDER BY message_count DESC 
+                LIMIT 1
+            """).fetchone()
+            
+            # Daily conversation counts (last 7 days)
+            daily_stats = conn.execute("""
+                SELECT date(timestamp) as date, COUNT(*) as count
+                FROM conversations
+                WHERE timestamp >= date('now', '-7 days')
+                GROUP BY date(timestamp)
+                ORDER BY date
+            """).fetchall()
+            
+            return {
+                'total_conversations': total_conversations,
+                'total_sessions': total_sessions,
+                'avg_response_time': round(avg_response_time, 2),
+                'today_conversations': today_conversations,
+                'week_conversations': week_conversations,
+                'most_active_session': most_active_session,
+                'daily_stats': daily_stats
+            }
+
+class EnhancedDataIngester:
+    """Enhanced data ingester with proper podcast API support."""
+    
+    def __init__(self):
+        self.podcast_api = os.getenv("PODCAST_API_BASE", "https://businessbelarabi.360marketingtec.com/api/podcast")
+        self.wp_base = os.getenv("WP_BASE", "https://businessbelarabi.com")
+        self.google_api_key = os.getenv("GOOGLE_API_KEY")
+    
+    def fetch_podcast_episodes(self, limit: int = 10) -> List[Dict]:
+        """Fetch podcast episodes from the corrected API endpoint."""
+        try:
+            # Use the base podcast API without /episodes suffix
+            response = requests.get(
+                self.podcast_api,
+                params={"per_page": limit},
+                timeout=15,
+                headers={
+                    'User-Agent': 'BusinessBelArabi-RAG/1.0',
+                    'Accept': 'application/json'
+                }
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Handle the API response structure
+                if isinstance(data, dict) and 'data' in data:
+                    # Check if data.data is paginated
+                    episodes_data = data['data']
+                    if isinstance(episodes_data, dict) and 'data' in episodes_data:
+                        episodes = episodes_data['data'][:limit]
+                    else:
+                        episodes = episodes_data[:limit] if isinstance(episodes_data, list) else [episodes_data]
+                else:
+                    episodes = data[:limit] if isinstance(data, list) else [data]
+                
+                # Process and enhance episode data
+                processed_episodes = []
+                for episode in episodes:
+                    processed_episode = {
+                        'id': episode.get('id'),
+                        'title': self._extract_title_from_trans(episode),
+                        'description': self._extract_description(episode),
+                        'transcript': episode.get('buzzsprout_transcript', ''),
+                        'audio_url': episode.get('sound_file', ''),
+                        'cover_image': episode.get('cover_image', episode.get('main_image', '')),
+                        'duration': episode.get('duration', ''),
+                        'scheduled_date': episode.get('scheduled_date_time', ''),
+                        'views_count': episode.get('views_count', 0),
+                        'likes_count': episode.get('likes_count', 0),
+                        'categories': episode.get('categories', []),
+                        'tags': episode.get('tags', []),
+                        'created_at': episode.get('created_at', ''),
+                        'uuid': episode.get('uuid', '')
+                    }
+                    processed_episodes.append(processed_episode)
+                
+                return processed_episodes
+                
+            else:
+                st.error(f"API returned status code: {response.status_code}")
+                return []
+                
+        except requests.exceptions.Timeout:
+            st.error("⏱️ Request timed out. The podcast API may be slow.")
+            return []
+        except requests.exceptions.RequestException as e:
+            st.error(f"🔗 Network error: {str(e)}")
+            return []
+        except json.JSONDecodeError as e:
+            st.error(f"📄 Invalid JSON response: {str(e)}")
+            return []
+        except Exception as e:
+            st.error(f"❌ Unexpected error: {str(e)}")
+            return []
+    
+    def _extract_title_from_trans(self, episode: Dict) -> str:
+        """Extract title from trans array or fallback to other fields."""
+        trans = episode.get('trans', [])
+        if trans and len(trans) > 0:
+            return trans[0].get('title', f"Episode {episode.get('id', 'Unknown')}")
+        return f"Episode {episode.get('id', 'Unknown')}"
+    
+    def _extract_description(self, episode: Dict) -> str:
+        """Extract description from various possible fields."""
+        # Try to get description from trans first
+        trans = episode.get('trans', [])
+        if trans and len(trans) > 0:
+            desc = trans[0].get('description', '')
+            if desc:
+                return self.clean_html_text(desc)
+        
+        # Fallback to transcript excerpt
+        transcript = episode.get('buzzsprout_transcript', '')
+        if transcript:
+            # Extract first few sentences from transcript
+            clean_transcript = self.clean_html_text(transcript)
+            sentences = clean_transcript.split('.')[:3]  # First 3 sentences
+            return '. '.join(sentences) + '...' if len(sentences) > 1 else clean_transcript[:200] + '...'
+        
+        return f"Business episode from {episode.get('created_at', 'unknown date')}"
+    
+    def fetch_wordpress_posts(self, limit: int = 10) -> List[Dict]:
+        """Fetch WordPress posts with enhanced error handling."""
+        if not self.wp_base:
+            return []
+        
+        try:
+            wp_api_url = f"{self.wp_base}/wp-json/wp/v2/posts"
+            response = requests.get(
+                wp_api_url,
+                params={"per_page": limit, "_embed": 1},
+                timeout=15,
+                headers={
+                    'User-Agent': 'BusinessBelArabi-RAG/1.0',
+                    'Accept': 'application/json'
+                }
+            )
+            
+            if response.status_code == 200:
+                posts = response.json()
+                processed_posts = []
+                
+                for post in posts:
+                    processed_post = {
+                        'id': post.get('id'),
+                        'title': self._extract_rendered_content(post.get('title', {})),
+                        'content': self._extract_rendered_content(post.get('content', {})),
+                        'excerpt': self._extract_rendered_content(post.get('excerpt', {})),
+                        'date': post.get('date'),
+                        'modified': post.get('modified'),
+                        'author': post.get('author'),
+                        'link': post.get('link'),
+                        'featured_media': post.get('featured_media'),
+                        'categories': post.get('categories', []),
+                        'tags': post.get('tags', [])
+                    }
+                    processed_posts.append(processed_post)
+                
+                return processed_posts
+            else:
+                st.error(f"WordPress API returned status code: {response.status_code}")
+                return []
+                
+        except Exception as e:
+            st.error(f"Error fetching WordPress posts: {str(e)}")
+            return []
+    
+    def _extract_rendered_content(self, content_obj: Dict) -> str:
+        """Extract rendered content from WordPress API response."""
+        if isinstance(content_obj, dict):
+            rendered = content_obj.get('rendered', '')
+            return self.clean_html_text(rendered)
+        return str(content_obj)
+    
+    def clean_html_text(self, html_text: str) -> str:
+        """Enhanced HTML cleaning with better text processing."""
+        if not html_text:
+            return ""
+        
+        # Remove HTML tags
+        clean_text = re.sub('<.*?>', '', str(html_text))
+        
+        # Remove extra whitespace and normalize
+        clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+        
+        # Remove common HTML entities
+        clean_text = clean_text.replace('&nbsp;', ' ')
+        clean_text = clean_text.replace('&amp;', '&')
+        clean_text = clean_text.replace('&lt;', '<')
+        clean_text = clean_text.replace('&gt;', '>')
+        clean_text = clean_text.replace('&quot;', '"')
+        
+        return clean_text
+
+class EnhancedAIAssistant:
+    """Enhanced AI assistant with better responses and analytics."""
+    
+    def __init__(self):
+        self.request_count = 0
+        self.google_api_key = os.getenv("GOOGLE_API_KEY")
+        self.model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
+        
+        # Business knowledge base
+        self.business_topics = {
+            'entrepreneurship': ['مشروع', 'بدء', 'تجاري', 'ريادة', 'شركة', 'عمل', 'مؤسسة'],
+            'marketing': ['تسويق', 'إعلان', 'عملاء', 'برندنج', 'ترويج', 'حملة'],
+            'management': ['إدارة', 'فريق', 'موظفين', 'قيادة', 'تنظيم'],
+            'finance': ['مالية', 'ميزانية', 'استثمار', 'ربح', 'تمويل', 'تكلفة'],
+            'strategy': ['استراتيجية', 'خطة', 'هدف', 'رؤية', 'تطوير'],
+            'sales': ['مبيعات', 'بيع', 'زبائن', 'عروض', 'صفقة']
+        }
+        
+    def get_response(self, message: str, context_data: List[Dict] = None) -> Tuple[str, str, float]:
+        """Generate enhanced response with context and timing."""
+        start_time = time.time()
+        self.request_count += 1
+        
+        # Detect topic
+        detected_topic = self._detect_topic(message)
+        
+        # Generate response based on topic and context
+        if not self.google_api_key:
+            response = self._get_setup_instructions()
+            model_used = "setup"
+        elif context_data:
+            response = self._get_context_aware_response(message, detected_topic, context_data)
+            model_used = "context-aware"
+        else:
+            response = self._get_topic_based_response(message, detected_topic)
+            model_used = "topic-based"
+        
+        response_time = time.time() - start_time
+        return response, model_used, response_time
+    
+    def _detect_topic(self, message: str) -> str:
+        """Detect the business topic from the message."""
+        message_lower = message.lower()
+        topic_scores = {}
+        
+        for topic, keywords in self.business_topics.items():
+            score = sum(1 for keyword in keywords if keyword in message_lower)
+            if score > 0:
+                topic_scores[topic] = score
+        
+        if topic_scores:
+            return max(topic_scores.items(), key=lambda x: x[1])[0]
+        return 'general'
+    
+    def _get_setup_instructions(self) -> str:
+        """Return setup instructions when API key is missing."""
+        return """🎙️ **مرحباً بك في Business bel Arabi!**
+
+للبدء في استخدام المساعد الذكي المحسّن، تحتاج إلى:
+
+### 🔑 **إعداد المفاتيح:**
+1. احصل على مفتاح Google AI من [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. أضفه في ملف `.env`: `GOOGLE_API_KEY=your_key_here`
+3. أعد تشغيل التطبيق
+
+### 📊 **الميزات المتاحة الآن:**
+- ✅ محادثات ذكية بالعربية
+- ✅ حفظ تاريخ المحادثات
+- ✅ إحصائيات وتحليلات
+- ✅ بحث في المحادثات السابقة
+- ✅ واجهة محسنة وسهلة الاستخدام
+
+### 🎯 **بعد إضافة المفاتيح ستحصل على:**
+- 🤖 ردود ذكية باستخدام Gemini AI
+- 📚 بحث في محتوى البودكاست والمقالات
+- 🎙️ توصيات الحلقات ذات الصلة
+- 📈 تحليل أعمق للأسئلة
+
+**جرب الآن:** اطرح أي سؤال متعلق بالأعمال والريادة!"""
+
+    def _get_context_aware_response(self, message: str, topic: str, context_data: List[Dict]) -> str:
+        """Generate context-aware response using retrieved data."""
+        # This would integrate with actual AI model when API key is available
+        context_summary = self._summarize_context(context_data)
+        
+        base_response = self._get_topic_based_response(message, topic)
+        
+        context_section = f"""
+
+### 📚 **من مصادرنا:**
+{context_summary}
+
+---
+*المعلومات أعلاه مستخرجة من بودكاست Business bel Arabi ومقالاتنا*
+"""
+        
+        return base_response + context_section
+    
+    def _summarize_context(self, context_data: List[Dict]) -> str:
+        """Summarize context data for inclusion in response."""
+        if not context_data:
+            return "لم يتم العثور على محتوى ذي صلة."
+        
+        summaries = []
+        for i, item in enumerate(context_data[:3], 1):  # Top 3 results
+            if 'transcript' in item and item['transcript']:
+                # For podcast episodes
+                title = item.get('title', f'حلقة {item.get("id", i)}')
+                excerpt = item['transcript'][:200] + "..."
+                summaries.append(f"**{i}. {title}**\n{excerpt}")
+            elif 'content' in item:
+                # For blog posts
+                title = item.get('title', f'مقال {i}')
+                excerpt = item['content'][:200] + "..."
+                summaries.append(f"**{i}. {title}**\n{excerpt}")
+        
+        return '\n\n'.join(summaries) if summaries else "لم يتم العثور على محتوى مفصل."
+    
+    def _get_topic_based_response(self, message: str, topic: str) -> str:
+        """Generate topic-based response."""
+        responses = {
+            'entrepreneurship': self._get_entrepreneurship_response(),
+            'marketing': self._get_marketing_response(), 
+            'management': self._get_management_response(),
+            'finance': self._get_finance_response(),
+            'strategy': self._get_strategy_response(),
+            'sales': self._get_sales_response(),
+        }
+        
+        base_response = responses.get(topic, self._get_general_response())
+        
+        # Add question-specific context
+        response_header = f"""### 💬 **سؤالك:** "{message}"
+
+{base_response}
+
+---
+"""
+        
+        return response_header + self._get_call_to_action()
+    
+    def _get_entrepreneurship_response(self) -> str:
+        return """## 🚀 **دليل ريادة الأعمال**
+
+### 💡 **الأساسيات:**
+- **دراسة السوق:** فهم احتياجات العملاء والمنافسين
+- **نموذج العمل:** كيف ستحقق الربح؟
+- **الفريق:** اختيار الشركاء والموظفين المناسبين
+- **التمويل:** تحديد مصادر رأس المال
+
+### 📊 **خطوات العمل:**
+1. **تطوير الفكرة** واختبارها مع عملاء محتملين
+2. **وضع خطة عمل** مفصلة وقابلة للتنفيذ  
+3. **تأسيس الشركة** والحصول على التراخيص
+4. **بناء المنتج** أو الخدمة الأولى
+5. **التسويق والمبيعات** لجذب العملاء
+6. **النمو والتوسع** تدريجياً
+
+### ⚠️ **أخطاء شائعة:**
+- تجاهل دراسة السوق
+- عدم التركيز على العملاء
+- نفاد رأس المال بسرعة
+- محاولة فعل كل شيء بنفسك"""
+    
+    def _get_marketing_response(self) -> str:
+        return """## 🎯 **استراتيجيات التسويق الحديثة**
+
+### 📱 **التسويق الرقمي:**
+- **وسائل التواصل:** فيسبوك، إنستغرام، لينكد إن
+- **تسويق المحتوى:** مقالات، فيديوهات، إنفوجرافيك
+- **SEO:** تحسين محركات البحث
+- **الإعلانات المدفوعة:** Google Ads، Facebook Ads
+
+### 🎨 **بناء العلامة التجارية:**
+- **الهوية البصرية:** شعار وألوان متسقة
+- **الرسالة:** ما تريد إيصاله للعملاء
+- **التميز:** ما يميزك عن المنافسين
+- **التجربة:** كيف يتفاعل العملاء معك
+
+### 📈 **قياس النجاح:**
+- معدل التحويل (Conversion Rate)
+- تكلفة اكتساب العميل (CAC)
+- القيمة مدى الحياة للعميل (LTV)
+- معدل التفاعل (Engagement Rate)
+
+### 💰 **تحسين الميزانية:**
+- ابدأ بالقنوات المجانية
+- اختبر استراتيجيات صغيرة قبل التوسع
+- ركز على القنوات التي تحقق أفضل عائد"""
+    
+    def _get_management_response(self) -> str:
+        return """## 👥 **إدارة الفرق بكفاءة**
+
+### 🎯 **أساسيات القيادة:**
+- **وضع الأهداف:** واضحة وقابلة للقياس
+- **التواصل:** مفتوح وشفاف مع الفريق
+- **التحفيز:** فهم ما يحرك كل عضو
+- **التطوير:** استثمار في نمو الموظفين
+
+### ⚙️ **أنظمة العمل:**
+- **هيكل تنظيمي** واضح ومرن
+- **عمليات موحدة** للمهام المتكررة
+- **أدوات تقنية** لتسهيل التعاون
+- **اجتماعات دورية** لمتابعة التقدم
+
+### 📊 **إدارة الأداء:**
+- تقييمات دورية للموظفين
+- ردود فعل بناءة ومستمرة
+- برامج تدريب وتطوير
+- نظام مكافآت عادل
+
+### 🔄 **التحسين المستمر:**
+- استطلاع آراء الفريق
+- تحليل نقاط القوة والضعف
+- تطوير الإجراءات باستمرار
+- تشجيع الابتكار والأفكار الجديدة"""
+        
+    def _get_finance_response(self) -> str:
+        return """## 💰 **الإدارة المالية الذكية**
+
+### 📊 **التخطيط المالي:**
+- **الميزانية:** تخطيط الإيرادات والمصروفات
+- **التدفق النقدي:** متابعة حركة الأموال
+- **الطوارئ:** احتياطي للظروف الصعبة
+- **الاستثمار:** توجيه الأرباح للنمو
+
+### 🎯 **مؤشرات مهمة:**
+- **هامش الربح:** نسبة الربح من المبيعات
+- **نقطة التعادل:** متى تتساوى الإيرادات مع التكاليف
+- **العائد على الاستثمار (ROI)**
+- **نسب السيولة:** قدرتك على سداد الالتزامات
+
+### 💳 **إدارة التكاليف:**
+- تصنيف المصاريف (ثابتة/متغيرة)
+- مراجعة دورية للمصاريف غير الضرورية
+- التفاوض مع الموردين
+- أتمتة العمليات لتوفير التكاليف
+
+### 📈 **مصادر التمويل:**
+- **التمويل الذاتي:** من الأرباح المحققة
+- **القروض البنكية:** للتوسعات الكبيرة
+- **المستثمرون:** شركاء في النجاح
+- **المنح والدعم الحكومي**"""
+    
+    def _get_strategy_response(self) -> str:
+        return """## 🎯 **التخطيط الاستراتيجي**
+
+### 🌟 **تحديد الرؤية:**
+- **الرؤية:** أين تريد أن تكون في المستقبل؟
+- **الرسالة:** لماذا تعمل وماذا تقدم؟
+- **القيم:** المبادئ التي توجه قراراتك
+- **الأهداف:** خطوات محددة نحو الرؤية
+
+### 🔍 **تحليل البيئة:**
+- **نقاط القوة:** ما تتميز به
+- **نقاط الضعف:** ما يحتاج تحسين
+- **الفرص:** إمكانيات في السوق
+- **التهديدات:** مخاطر محتملة
+
+### 📋 **وضع الخطة:**
+- أهداف قصيرة وطويلة المدى
+- استراتيجيات لتحقيق كل هدف
+- توزيع الموارد والمسؤوليات
+- جدول زمني للتنفيذ
+
+### 📊 **المتابعة والتقييم:**
+- مؤشرات أداء رئيسية (KPIs)
+- مراجعة دورية للخطة
+- تعديل الاستراتيجية حسب الظروف
+- توثيق الدروس المستفادة"""
+    
+    def _get_sales_response(self) -> str:
+        return """## 💼 **زيادة المبيعات**
+
+### 🎯 **فهم العميل:**
+- **البحث:** احتياجات ومشاكل العملاء
+- **التقسيم:** تصنيف العملاء حسب الخصائص
+- **رحلة العميل:** من الوعي إلى الشراء
+- **نقاط الألم:** المشاكل التي تحلها
+
+### 🗣️ **تقنيات البيع:**
+- **الاستماع:** فهم حاجة العميل أولاً
+- **طرح الأسئلة:** للوصول للحاجة الحقيقية
+- **العرض:** ركز على الفوائد وليس المميزات
+- **التعامل مع الاعتراضات:** بصبر ومنطق
+
+### 📈 **قنوات المبيعات:**
+- **البيع المباشر:** فريق مبيعات متخصص
+- **التجارة الإلكترونية:** متجر إلكتروني
+- **الشراكات:** موزعون ووكلاء
+- **الإحالات:** عملاء راضون ينصحون آخرين
+
+### 🔧 **أدوات مساعدة:**
+- نظام إدارة علاقات العملاء (CRM)
+- برامج تتبع المبيعات
+- أدوات التسويق عبر البريد الإلكتروني
+- منصات التواصل الاجتماعي"""
+    
+    def _get_general_response(self) -> str:
+        return """## 🏢 **نصائح عامة في الأعمال**
+
+### 🎯 **مبادئ أساسية:**
+- **ركز على العميل:** احتياجاته هي الأولوية
+- **الجودة أولاً:** أفضل من السرعة والكمية
+- **التعلم المستمر:** السوق يتغير باستمرار
+- **الصبر والمثابرة:** النجاح يحتاج وقت
+
+### 💡 **للنجاح في الأعمال:**
+1. **ابدأ صغيراً** واختبر السوق
+2. **استمع للعملاء** وطور حسب احتياجاتهم
+3. **بناء فريق قوي** يؤمن بالرؤية
+4. **إدارة مالية حكيمة** وتخطيط للمستقبل
+5. **التكيف مع التغيير** والتطوير المستمر
+
+### 🚫 **أخطاء شائعة:**
+- محاولة إرضاء الجميع
+- تجاهل المنافسة
+- عدم الاستثمار في التسويق
+- إهمال خدمة العملاء"""
+    
+    def _get_call_to_action(self) -> str:
+        return """
+### 🎙️ **تابع معنا:**
+- استكشف تبويب "تاريخ المحادثات" لمراجعة نصائحنا السابقة
+- تصفح صفحة "تحليل البيانات" لاستيراد محتوى من البودكاست
+- جرب طرح أسئلة أكثر تخصصاً للحصول على إجابات مفصلة
+
+**لديك سؤال آخر؟** اطرحه الآن! 💬"""
+
+def initialize_session_state():
+    """Initialize all session state variables."""
+    # Basic session management
+    if "session_id" not in st.session_state:
+        st.session_state.session_id = str(uuid.uuid4())
+    
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+    
+    if "conversation_id" not in st.session_state:
+        st.session_state.conversation_id = f"conv_{int(time.time())}"
+    
+    # Enhanced components
+    if "db_manager" not in st.session_state:
+        st.session_state.db_manager = DatabaseManager()
+    
+    if "assistant" not in st.session_state:
+        st.session_state.assistant = EnhancedAIAssistant()
+    
+    if "ingester" not in st.session_state:
+        st.session_state.ingester = EnhancedDataIngester()
+    
+    # UI state
+    if "selected_history_session" not in st.session_state:
+        st.session_state.selected_history_session = None
+    
+    if "app_start_time" not in st.session_state:
+        st.session_state.app_start_time = time.time()
+
+def render_enhanced_sidebar():
+    """Render enhanced sidebar with better organization."""
+    with st.sidebar:
+        # Header with logo/branding
+        st.markdown("""
+        <div style="text-align: center; padding: 1rem 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    border-radius: 10px; color: white; margin-bottom: 1rem;">
+            <h2>🎙️ Business bel Arabi</h2>
+            <p style="margin: 0; opacity: 0.9;">CEO Expert Assistant</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Navigation with icons
+        page = st.selectbox(
+            "📍 Select Page:",
+            [
+                "💬 Chat",
+                "📜 Chat History", 
+                "📊 Data Analysis",
+                "⚙️ System Status",
+                "📚 Help"
+            ],
+            index=0
+        )
+        
+        st.markdown("---")
+        
+        # Quick stats
+        st.markdown("### 📊 **Quick Stats**")
+        analytics = st.session_state.db_manager.get_analytics_data()
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("💬 Conversations", analytics['total_conversations'])
+            st.metric("📅 Today", analytics['today_conversations'])
+        with col2:
+            st.metric("🔗 Sessions", analytics['total_sessions'])
+            st.metric("📈 This Week", analytics['week_conversations'])
+        
+        if analytics['avg_response_time'] > 0:
+            st.metric("⚡ Avg Response Time", f"{analytics['avg_response_time']:.2f}s")
+        
+        st.markdown("---")
+        
+        # Quick actions
+        st.markdown("### ⚡ **إجراءات سريعة**")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🗑️ مسح المحادثة", help="مسح المحادثة الحالية"):
+                st.session_state.chat_history = []
+                st.session_state.session_id = str(uuid.uuid4())
+                st.rerun()
+        
+        with col2:
+            if st.button("🔄 تحديث", help="تحديث الصفحة"):
+                st.rerun()
+        
+        # Export/Import (placeholder)
+        if st.button("📤 تصدير المحادثات", help="تصدير جميع المحادثات"):
+            st.info("سيتم إضافة هذه الميزة قريباً!")
+        
+        st.markdown("---")
+        
+        # System status indicator  
+        st.markdown("### 🔧 **حالة النظام**")
+        
+        google_api = os.getenv("GOOGLE_API_KEY")
+        if google_api:
+            st.markdown('<span class="status-badge status-success">✅ Google AI متصل</span>', 
+                       unsafe_allow_html=True)
+        else:
+            st.markdown('<span class="status-badge status-error">❌ Google AI غير متصل</span>', 
+                       unsafe_allow_html=True)
+        
+        podcast_api = os.getenv("PODCAST_API_BASE")
+        if podcast_api:
+            st.markdown('<span class="status-badge status-success">✅ Podcast API</span>', 
+                       unsafe_allow_html=True)
+        else:
+            st.markdown('<span class="status-badge status-warning">⚠️ Podcast API</span>', 
+                       unsafe_allow_html=True)
+        
+        wp_base = os.getenv("WP_BASE") 
+        if wp_base:
+            st.markdown('<span class="status-badge status-success">✅ WordPress</span>', 
+                       unsafe_allow_html=True)
+        else:
+            st.markdown('<span class="status-badge status-warning">⚠️ WordPress</span>', 
+                       unsafe_allow_html=True)
+        
+        return page
+
+def render_chat_page():
+    """Enhanced chat page with better UX."""
+    st.title("💬 محادثة مع خبير الأعمال")
+    st.markdown("*اطرح أي سؤال متعلق بالأعمال، الريادة، التسويق، أو الإدارة!*")
+    
+    # Chat container with custom styling
+    chat_container = st.container()
+    
+    with chat_container:
+        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+        
+        # Display chat history with enhanced formatting
+        for i, message in enumerate(st.session_state.chat_history):
+            if message["role"] == "user":
+                st.markdown(f"""
+                <div class="chat-message user-message rtl-text">
+                    <strong>🧑‍💼 أنت:</strong><br>{message["content"]}
+                    <div style="font-size: 0.8em; opacity: 0.7; margin-top: 0.5rem;">
+                        {message.get('timestamp', datetime.now().strftime('%H:%M'))}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="chat-message assistant-message rtl-text">
+                    <strong>🤖 CEO Expert:</strong><br>{message["content"]}
+                    <div style="font-size: 0.8em; opacity: 0.7; margin-top: 0.5rem;">
+                        ⚡ {message.get('response_time', 0):.2f}s | 
+                        🎯 {message.get('model_used', 'simple')}
+                        {' | 🔍 السياق مستخدم' if message.get('context_used') else ''}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Enhanced input section
+    st.markdown("---")
+    
+    # Input form with better layout
+    with st.form(key="chat_form", clear_on_submit=True):
+        col1, col2 = st.columns([4, 1])
+        
+        with col1:
+            user_input = st.text_area(
+                "اكتب سؤالك هنا:",
+                height=100,
+                placeholder="مثال: كيف يمكنني تحسين استراتيجية التسويق لشركتي؟",
+                help="اكتب سؤالاً مفصلاً للحصول على إجابة أكثر دقة"
+            )
+        
+        with col2:
+            st.markdown("<br>", unsafe_allow_html=True)  # Spacing
+            submit_button = st.form_submit_button(
+                "إرسال 📤", 
+                type="primary",
+                use_container_width=True
+            )
+            
+            # Advanced options
+            with st.expander("⚙️ خيارات متقدمة"):
+                use_context = st.checkbox("🔍 استخدام السياق من البودكاست", value=True)
+                max_context_results = st.slider("عدد النتائج", 1, 10, 3)
+    
+    # Process message
+    if submit_button and user_input.strip():
+        # Add user message to history with timestamp
+        user_message = {
+            "role": "user",
+            "content": user_input,
+            "timestamp": datetime.now().strftime('%H:%M:%S')
+        }
+        st.session_state.chat_history.append(user_message)
+        
+        # Generate response with context if requested
+        with st.spinner("🤔 CEO Expert يفكر..."):
+            try:
+                # Get context if requested
+                context_data = None
+                if use_context:
+                    # This would integrate with vector search in full implementation
+                    context_data = st.session_state.ingester.fetch_podcast_episodes(max_context_results)
+                
+                # Generate response
+                response, model_used, response_time = st.session_state.assistant.get_response(
+                    user_input, context_data
+                )
+                
+                # Add assistant response to history
+                assistant_message = {
+                    "role": "assistant",
+                    "content": response,
+                    "timestamp": datetime.now().strftime('%H:%M:%S'),
+                    "response_time": response_time,
+                    "model_used": model_used,
+                    "context_used": context_data is not None and len(context_data) > 0
+                }
+                st.session_state.chat_history.append(assistant_message)
+                
+                # Save to database
+                st.session_state.db_manager.save_conversation(
+                    st.session_state.session_id,
+                    user_input,
+                    response,
+                    response_time,
+                    assistant_message["context_used"],
+                    model_used
+                )
+                
+            except Exception as e:
+                error_msg = f"❌ حدث خطأ: {str(e)}"
+                st.error(error_msg)
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": "عذراً، واجهت مشكلة تقنية. يرجى المحاولة مرة أخرى.",
+                    "timestamp": datetime.now().strftime('%H:%M:%S'),
+                    "response_time": 0,
+                    "model_used": "error"
+                })
+        
+        st.rerun()
+    
+    # Quick suggestion buttons
+    st.markdown("### 💡 **Suggested Questions:**")
+    
+    suggestions = [
+        "How to start a successful business project?",
+        "What are the best digital marketing strategies?", 
+        "How to manage a team efficiently?",
+        "What are the ways to increase sales?"
+    ]
+    
+    cols = st.columns(2)
+    for i, suggestion in enumerate(suggestions):
+        with cols[i % 2]:
+            if st.button(f"💭 {suggestion}", key=f"suggestion_{i}"):
+                # Add user message to history
+                user_message = {
+                    "role": "user",
+                    "content": suggestion,
+                    "timestamp": datetime.now().strftime('%H:%M:%S')
+                }
+                st.session_state.chat_history.append(user_message)
+                
+                # Immediately generate response (make it actionable)
+                with st.spinner("🤔 CEO Expert is thinking..."):
+                    try:
+                        # Generate response with context
+                        context_data = st.session_state.ingester.fetch_podcast_episodes(3)
+                        response, model_used, response_time = st.session_state.assistant.get_response(
+                            suggestion, context_data
+                        )
+                        
+                        # Add assistant response to history
+                        assistant_message = {
+                            "role": "assistant",
+                            "content": response,
+                            "timestamp": datetime.now().strftime('%H:%M:%S'),
+                            "response_time": response_time,
+                            "model_used": model_used,
+                            "context_used": context_data is not None and len(context_data) > 0
+                        }
+                        st.session_state.chat_history.append(assistant_message)
+                        
+                        # Save to database
+                        st.session_state.db_manager.save_conversation(
+                            st.session_state.session_id,
+                            suggestion,
+                            response,
+                            response_time,
+                            assistant_message["context_used"],
+                            model_used
+                        )
+                        
+                    except Exception as e:
+                        error_msg = f"❌ Error occurred: {str(e)}"
+                        st.error(error_msg)
+                        st.session_state.chat_history.append({
+                            "role": "assistant",
+                            "content": "Sorry, I encountered a technical issue. Please try again.",
+                            "timestamp": datetime.now().strftime('%H:%M:%S'),
+                            "response_time": 0,
+                            "model_used": "error"
+                        })
+                
+                st.rerun()
+
+def render_history_page():
+    """Enhanced conversation history page with search and analytics."""
+    st.title("📜 تاريخ المحادثات")
+    st.markdown("*مراجعة وإدارة جميع محادثاتك السابقة*")
+    
+    # Get analytics data
+    analytics = st.session_state.db_manager.get_analytics_data()
+    
+    # Overview metrics
+    st.markdown("### 📊 **نظرة عامة**")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>💬 إجمالي المحادثات</h3>
+            <h2 style="color: #667eea;">{analytics['total_conversations']}</h2>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>🔗 الجلسات</h3>
+            <h2 style="color: #764ba2;">{analytics['total_sessions']}</h2>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>📅 اليوم</h3>
+            <h2 style="color: #28a745;">{analytics['today_conversations']}</h2>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>⚡ متوسط الاستجابة</h3>
+            <h2 style="color: #ffc107;">{analytics['avg_response_time']:.2f}s</h2>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Search and filter section
+    st.markdown("### 🔍 **البحث والتصفية**")
+    
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        search_query = st.text_input(
+            "🔎 البحث في المحادثات:",
+            placeholder="ابحث في المحادثات السابقة...",
+            help="ابحث في نص المحادثات والردود"
+        )
+    
+    with col2:
+        # Get sessions for dropdown
+        sessions = st.session_state.db_manager.get_sessions(100)
+        session_options = ["جميع الجلسات"] + [
+            f"{session['session_name']} ({session['total_messages']} رسائل)" 
+            for session in sessions
+        ]
+        
+        selected_session_idx = st.selectbox(
+            "📂 اختر الجلسة:",
+            range(len(session_options)),
+            format_func=lambda x: session_options[x]
+        )
+    
+    with col3:
+        limit = st.selectbox(
+            "📊 عدد النتائج:",
+            [20, 50, 100, 200],
+            index=1
+        )
+    
+    # Get conversations based on filters
+    if search_query:
+        conversations = st.session_state.db_manager.search_conversations(search_query, limit)
+        st.info(f"🔍 عُثر على {len(conversations)} نتيجة للبحث: \"{search_query}\"")
+    elif selected_session_idx > 0:
+        session_id = sessions[selected_session_idx - 1]['session_id']
+        conversations = st.session_state.db_manager.get_conversation_history(session_id, limit)
+        st.info(f"📂 عرض محادثات الجلسة: {sessions[selected_session_idx - 1]['session_name']}")
+    else:
+        conversations = st.session_state.db_manager.get_conversation_history(limit=limit)
+    
+    # Display conversations
+    if conversations:
+        st.markdown(f"### 💬 **المحادثات ({len(conversations)} محادثة)**")
+        
+        # Conversation list with enhanced display
+        for conv in conversations:
+            with st.expander(
+                f"💬 {conv['user_message'][:80]}... | ⏰ {conv['timestamp']}", 
+                expanded=False
+            ):
+                col1, col2 = st.columns([3, 1])
+                
+                with col1:
+                    # User message
+                    st.markdown("**🧑‍💼 سؤالك:**")
+                    st.markdown(f"<div class='rtl-text'>{conv['user_message']}</div>", 
+                               unsafe_allow_html=True)
+                    
+                    st.markdown("**🤖 الإجابة:**")
+                    st.markdown(f"<div class='rtl-text'>{conv['assistant_response'][:500]}{'...' if len(conv['assistant_response']) > 500 else ''}</div>", 
+                               unsafe_allow_html=True)
+                    
+                    if len(conv['assistant_response']) > 500:
+                        if st.button(f"📖 عرض الإجابة كاملة", key=f"full_response_{conv['id']}"):
+                            st.markdown(f"<div class='rtl-text'>{conv['assistant_response']}</div>", 
+                                       unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown("**📊 تفاصيل:**")
+                    st.text(f"🕒 {conv['timestamp']}")
+                    st.text(f"⚡ {conv['response_time']:.2f}s")
+                    st.text(f"🎯 {conv['model_used']}")
+                    
+                    if conv['context_used']:
+                        st.markdown("🔍 **السياق مستخدم**")
+                    
+                    if conv['user_rating']:
+                        st.text(f"⭐ التقييم: {conv['user_rating']}/5")
+                    
+                    # Quick actions
+                    if st.button("🔄 إعادة استخدام", key=f"reuse_{conv['id']}", 
+                                help="إضافة هذا السؤال للمحادثة الحالية"):
+                        st.session_state.chat_history.append({
+                            "role": "user",
+                            "content": conv['user_message'],
+                            "timestamp": datetime.now().strftime('%H:%M:%S')
+                        })
+                        st.success("✅ تم إضافة السؤال للمحادثة الحالية!")
+    
+    else:
+        st.info("📭 لا توجد محادثات متاحة بعد. ابدأ محادثة جديدة!")
+    
+    # Sessions management
+    st.markdown("---")
+    st.markdown("### 🔗 **إدارة الجلسات**")
+    
+    if sessions:
+        # Display sessions table
+        sessions_df = pd.DataFrame(sessions)
+        sessions_df['created_at'] = pd.to_datetime(sessions_df['created_at']).dt.strftime('%Y-%m-%d %H:%M')
+        sessions_df['last_activity'] = pd.to_datetime(sessions_df['last_activity']).dt.strftime('%Y-%m-%d %H:%M')
+        
+        # Rename columns to Arabic
+        display_df = sessions_df[['session_name', 'total_messages', 'created_at', 'last_activity']].copy()
+        display_df.columns = ['اسم الجلسة', 'عدد الرسائل', 'تاريخ الإنشاء', 'آخر نشاط']
+        
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("📂 لا توجد جلسات محفوظة بعد.")
+
+def render_data_analysis_page():
+    """Enhanced data analysis and ingestion page."""
+    st.title("📊 تحليل البيانات وإدارة المحتوى")
+    st.markdown("*استيراد وتحليل محتوى البودكاست والمقالات*")
+    
+    # Data source status
+    st.markdown("### 🔗 **حالة مصادر البيانات**")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        podcast_api = os.getenv("PODCAST_API_BASE")
+        if podcast_api:
+            st.success(f"✅ **Podcast API متصل**")
+            st.text(f"🌐 {podcast_api[:50]}...")
+        else:
+            st.error("❌ **Podcast API غير متصل**")
+            st.info("أضف `PODCAST_API_BASE` في ملف .env")
+    
+    with col2:
+        wp_base = os.getenv("WP_BASE")
+        if wp_base:
+            st.success(f"✅ **WordPress متصل**") 
+            st.text(f"🌐 {wp_base[:50]}...")
+        else:
+            st.error("❌ **WordPress غير متصل**")
+            st.info("أضف `WP_BASE` في ملف .env")
+    
+    st.markdown("---")
+    
+    # Data ingestion section
+    st.markdown("### 📥 **استيراد البيانات**")
+    
+    tab1, tab2 = st.tabs(["🎙️ بودكاست", "📝 مقالات WordPress"])
+    
+    with tab1:
+        st.markdown("#### 🎙️ **محتوى البودكاست**")
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            podcast_limit = st.slider(
+                "عدد الحلقات للاستيراد:",
+                min_value=1, max_value=50, value=10,
+                help="عدد حلقات البودكاست المراد استيرادها"
+            )
+        
+        with col2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            fetch_podcast_btn = st.button(
+                "🚀 استيراد حلقات البودكاست",
+                type="primary",
+                disabled=not podcast_api
+            )
+        
+        if fetch_podcast_btn and podcast_api:
+            with st.spinner("🎙️ جاري استيراد حلقات البودكاست..."):
+                episodes = st.session_state.ingester.fetch_podcast_episodes(podcast_limit)
+                
+                if episodes:
+                    st.success(f"✅ تم استيراد {len(episodes)} حلقة بنجاح!")
+                    
+                    # Display episodes in an enhanced format
+                    st.markdown("### 🎧 **الحلقات المستيردة:**")
+                    
+                    for i, episode in enumerate(episodes, 1):
+                        with st.expander(f"🎙️ {episode['title']}", expanded=i <= 2):
+                            col1, col2 = st.columns([2, 1])
+                            
+                            with col1:
+                                if episode.get('description'):
+                                    st.markdown(f"**📝 الوصف:**")
+                                    st.markdown(f"<div class='rtl-text'>{episode['description']}</div>", 
+                                               unsafe_allow_html=True)
+                                
+                                if episode.get('transcript'):
+                                    st.markdown(f"**📄 نص الحلقة:**")
+                                    transcript_preview = episode['transcript'][:300] + "..." if len(episode['transcript']) > 300 else episode['transcript']
+                                    st.markdown(f"<div class='rtl-text'>{transcript_preview}</div>", 
+                                               unsafe_allow_html=True)
+                                    
+                                    if len(episode['transcript']) > 300:
+                                        if st.button(f"📖 عرض النص كاملاً", key=f"transcript_{episode['id']}"):
+                                            st.markdown(f"<div class='rtl-text'>{episode['transcript']}</div>", 
+                                                       unsafe_allow_html=True)
+                            
+                            with col2:
+                                st.markdown("**📊 معلومات:**")
+                                st.text(f"🆔 ID: {episode.get('id', 'N/A')}")
+                                st.text(f"⏱️ المدة: {episode.get('duration', 'غير محدد')}")
+                                st.text(f"👁️ المشاهدات: {episode.get('views_count', 0)}")
+                                st.text(f"❤️ الإعجابات: {episode.get('likes_count', 0)}")
+                                st.text(f"📅 التاريخ: {episode.get('scheduled_date', '')[:10]}")
+                                
+                                if episode.get('cover_image'):
+                                    st.image(episode['cover_image'], width=150)
+                                
+                                if episode.get('audio_url'):
+                                    st.markdown(f"🎵 [رابط الصوت]({episode['audio_url']})")
+                else:
+                    st.warning("⚠️ لم يتم العثور على حلقات أو حدث خطأ في الاستيراد")
+                    st.info(f"تم المحاولة من: {podcast_api}")
+    
+    with tab2:
+        st.markdown("#### 📝 **مقالات WordPress**")
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            wp_limit = st.slider(
+                "عدد المقالات للاستيراد:",
+                min_value=1, max_value=50, value=10,
+                help="عدد المقالات المراد استيرادها من WordPress"
+            )
+        
+        with col2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            fetch_wp_btn = st.button(
+                "🚀 استيراد مقالات WordPress",
+                type="primary",
+                disabled=not wp_base
+            )
+        
+        if fetch_wp_btn and wp_base:
+            with st.spinner("📝 جاري استيراد مقالات WordPress..."):
+                posts = st.session_state.ingester.fetch_wordpress_posts(wp_limit)
+                
+                if posts:
+                    st.success(f"✅ تم استيراد {len(posts)} مقال بنجاح!")
+                    
+                    # Display posts in enhanced format
+                    st.markdown("### 📰 **المقالات المستيردة:**")
+                    
+                    for i, post in enumerate(posts, 1):
+                        with st.expander(f"📝 {post['title']}", expanded=i <= 2):
+                            col1, col2 = st.columns([2, 1])
+                            
+                            with col1:
+                                if post.get('excerpt'):
+                                    st.markdown(f"**📄 المقتطف:**")
+                                    st.markdown(f"<div class='rtl-text'>{post['excerpt']}</div>", 
+                                               unsafe_allow_html=True)
+                                
+                                if post.get('content'):
+                                    st.markdown(f"**📝 المحتوى:**")
+                                    content_preview = post['content'][:400] + "..." if len(post['content']) > 400 else post['content']
+                                    st.markdown(f"<div class='rtl-text'>{content_preview}</div>", 
+                                               unsafe_allow_html=True)
+                                    
+                                    if len(post['content']) > 400:
+                                        if st.button(f"📖 عرض المقال كاملاً", key=f"content_{post['id']}"):
+                                            st.markdown(f"<div class='rtl-text'>{post['content']}</div>", 
+                                                       unsafe_allow_html=True)
+                            
+                            with col2:
+                                st.markdown("**📊 معلومات:**")
+                                st.text(f"🆔 ID: {post.get('id', 'N/A')}")
+                                st.text(f"📅 تاريخ النشر: {post.get('date', '')[:10]}")
+                                st.text(f"✏️ آخر تعديل: {post.get('modified', '')[:10]}")
+                                st.text(f"👤 المؤلف: {post.get('author', 'غير محدد')}")
+                                
+                                if post.get('link'):
+                                    st.markdown(f"🔗 [رابط المقال]({post['link']})")
+                else:
+                    st.warning("⚠️ لم يتم العثور على مقالات أو حدث خطأ في الاستيراد")
+                    st.info(f"تم المحاولة من: {wp_base}/wp-json/wp/v2/posts")
+    
+    # Analytics and insights
+    st.markdown("---")
+    st.markdown("### 📈 **تحليلات وإحصائيات**")
+    
+    analytics = st.session_state.db_manager.get_analytics_data()
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### 📊 **إحصائيات المحادثات**")
+        
+        if analytics['daily_stats']:
+            # Create a simple chart using pandas and streamlit
+            daily_df = pd.DataFrame(analytics['daily_stats'], columns=['التاريخ', 'عدد المحادثات'])
+            daily_df['التاريخ'] = pd.to_datetime(daily_df['التاريخ'])
+            
+            st.line_chart(
+                daily_df.set_index('التاريخ'),
+                height=200
+            )
+        else:
+            st.info("لا توجد بيانات كافية لعرض الرسم البياني")
+    
+    with col2:
+        st.markdown("#### 🏆 **أهم الإحصائيات**")
+        
+        # Top metrics
+        metrics = [
+            ("💬", "إجمالي المحادثات", analytics['total_conversations']),
+            ("🔗", "إجمالي الجلسات", analytics['total_sessions']),
+            ("📅", "محادثات اليوم", analytics['today_conversations']),
+            ("📈", "محادثات الأسبوع", analytics['week_conversations']),
+        ]
+        
+        for icon, label, value in metrics:
+            st.markdown(f"**{icon} {label}:** {value}")
+        
+        if analytics['most_active_session']:
+            session_id, msg_count = analytics['most_active_session']
+            st.markdown(f"**🔥 الجلسة الأكثر نشاطاً:** {msg_count} رسائل")
+
+def render_system_status_page():
+    """Enhanced system status page with comprehensive monitoring."""
+    st.title("⚙️ حالة النظام والمراقبة")
+    st.markdown("*مراقبة شاملة لحالة النظام والأداء*")
+    
+    # System information
+    st.markdown("### 🖥️ **معلومات النظام**")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        st.metric("🐍 Python", python_version)
+    
+    with col2:
+        active_threads = threading.active_count()
+        st.metric("🧵 المسارات النشطة", active_threads)
+    
+    with col3:
+        requests_count = st.session_state.assistant.request_count
+        st.metric("📊 الطلبات المعالجة", requests_count)
+    
+    with col4:
+        uptime = time.time() - st.session_state.app_start_time
+        uptime_hours = uptime / 3600
+        st.metric("⏰ وقت التشغيل", f"{uptime_hours:.1f}h")
+    
+    st.markdown("---")
+    
+    # Environment status with enhanced display
+    st.markdown("### 🔧 **حالة البيئة والمتغيرات**")
+    
+    env_vars = {
+        "GOOGLE_API_KEY": {"desc": "Google AI API Key", "required": True, "type": "secret"},
+        "PODCAST_API_BASE": {"desc": "Podcast API URL", "required": False, "type": "url"},
+        "WP_BASE": {"desc": "WordPress Base URL", "required": False, "type": "url"},
+        "QDRANT_URL": {"desc": "Qdrant Vector Database", "required": False, "type": "url", "default": "http://localhost:6333"},
+        "REDIS_URL": {"desc": "Redis Cache URL", "required": False, "type": "url"},
+        "GEMINI_MODEL": {"desc": "Gemini AI Model", "required": False, "type": "text", "default": "gemini-1.5-pro"},
+        "MAX_THREADS": {"desc": "Max Thread Count", "required": False, "type": "number", "default": "4"},
+        "BATCH_SIZE": {"desc": "Processing Batch Size", "required": False, "type": "number", "default": "10"},
+    }
+    
+    # Create status table
+    status_data = []
+    for var, config in env_vars.items():
+        value = os.getenv(var)
+        
+        if value:
+            if config.get("type") == "secret":
+                display_value = f"{'*' * 8}...{value[-4:]}" if len(value) > 12 else "***"
+                status = "✅ متصل"
+                color = "success"
+            else:
+                display_value = value if len(value) <= 50 else value[:47] + "..."
+                status = "✅ متاح"
+                color = "success"
+        elif config.get("default"):
+            display_value = f"افتراضي: {config['default']}"
+            status = "ℹ️ افتراضي"
+            color = "info"
+        else:
+            display_value = "غير محدد"
+            if config.get("required"):
+                status = "❌ مطلوب"
+                color = "error"
+            else:
+                status = "⚠️ اختياري"
+                color = "warning"
+        
+        status_data.append({
+            "المتغير": var,
+            "الوصف": config["desc"],
+            "القيمة": display_value,
+            "الحالة": status,
+            "اللون": color
+        })
+    
+    # Display as enhanced table
+    for item in status_data:
+        col1, col2, col3 = st.columns([2, 3, 2])
+        
+        with col1:
+            st.markdown(f"**{item['المتغير']}**")
+        
+        with col2:
+            st.text(item['الوصف'])
+            st.text(f"القيمة: {item['القيمة']}")
+        
+        with col3:
+            if item['اللون'] == 'success':
+                st.success(item['الحالة'])
+            elif item['اللون'] == 'warning':
+                st.warning(item['الحالة'])
+            elif item['اللون'] == 'error':
+                st.error(item['الحالة'])
+            else:
+                st.info(item['الحالة'])
+    
+    st.markdown("---")
+    
+    # Database status
+    st.markdown("### 🗄️ **حالة قاعدة البيانات**")
+    
+    try:
+        analytics = st.session_state.db_manager.get_analytics_data()
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.success("✅ قاعدة البيانات متصلة")
+            st.text(f"📊 {analytics['total_conversations']} محادثة محفوظة")
+            st.text(f"🔗 {analytics['total_sessions']} جلسة")
+        
+        with col2:
+            st.text(f"⚡ متوسط وقت الاستجابة: {analytics['avg_response_time']:.2f}s")
+            st.text(f"📅 محادثات اليوم: {analytics['today_conversations']}")
+            st.text(f"📈 محادثات الأسبوع: {analytics['week_conversations']}")
+        
+        with col3:
+            if analytics['most_active_session']:
+                session_id, msg_count = analytics['most_active_session']
+                st.text(f"🔥 أنشط جلسة: {msg_count} رسائل")
+            
+            # Database file info
+            db_path = st.session_state.db_manager.db_path
+            if os.path.exists(db_path):
+                db_size = os.path.getsize(db_path) / 1024  # KB
+                st.text(f"💾 حجم قاعدة البيانات: {db_size:.1f} KB")
+    
+    except Exception as e:
+        st.error(f"❌ خطأ في قاعدة البيانات: {str(e)}")
+    
+    st.markdown("---")
+    
+    # Performance metrics
+    st.markdown("### 📈 **مؤشرات الأداء**")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### 💬 **أداء المحادثات**")
+        chat_count = len(st.session_state.chat_history)
+        st.metric("رسائل الجلسة الحالية", chat_count)
+        
+        if analytics['avg_response_time'] > 0:
+            if analytics['avg_response_time'] < 1:
+                st.success(f"⚡ أداء ممتاز: {analytics['avg_response_time']:.2f}s")
+            elif analytics['avg_response_time'] < 3:
+                st.info(f"⚡ أداء جيد: {analytics['avg_response_time']:.2f}s")
+            else:
+                st.warning(f"⚡ أداء بطيء: {analytics['avg_response_time']:.2f}s")
+    
+    with col2:
+        st.markdown("#### 🖥️ **صحة النظام**")
+        
+        memory_usage = sys.getsizeof(st.session_state) / 1024  # KB
+        st.metric("استخدام الذاكرة", f"{memory_usage:.1f} KB")
+        
+        # System health indicators
+        health_score = 0
+        health_checks = [
+            ("Google API", bool(os.getenv("GOOGLE_API_KEY"))),
+            ("Database", True),  # We know it's working if we got here
+            ("Podcast API", bool(os.getenv("PODCAST_API_BASE"))),
+            ("WordPress", bool(os.getenv("WP_BASE")))
+        ]
+        
+        for check_name, is_healthy in health_checks:
+            if is_healthy:
+                health_score += 25
+                st.success(f"✅ {check_name}")
+            else:
+                st.warning(f"⚠️ {check_name}")
+        
+        if health_score >= 75:
+            st.success(f"🟢 صحة النظام: {health_score}% (ممتاز)")
+        elif health_score >= 50:
+            st.info(f"🟡 صحة النظام: {health_score}% (جيد)")
+        else:
+            st.error(f"🔴 صحة النظام: {health_score}% (يحتاج تحسين)")
+    
+    # Recent activity
+    st.markdown("---")
+    st.markdown("### 📋 **النشاط الأخير**")
+    
+    recent_conversations = st.session_state.db_manager.get_conversation_history(limit=5)
+    
+    if recent_conversations:
+        for conv in recent_conversations:
+            with st.container():
+                st.markdown(f"""
+                **🕐 {conv['timestamp']}** | ⚡ {conv['response_time']:.2f}s | 🎯 {conv['model_used']}
+                
+                **Q:** {conv['user_message'][:100]}{'...' if len(conv['user_message']) > 100 else ''}
+                """)
+                st.markdown("---")
+    else:
+        st.info("📭 لا توجد محادثات حديثة")
+
+def render_help_page():
+    """Enhanced help and documentation page."""
+    st.title("📚 المساعدة والدليل الشامل")
+    st.markdown("*دليل كامل لاستخدام Business bel Arabi CEO Expert*")
+    
+    # Quick help tabs
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "🚀 البدء السريع", 
+        "💬 استخدام المحادثة", 
+        "📊 إدارة البيانات", 
+        "🔧 الإعدادات", 
+        "❓ الأسئلة الشائعة"
+    ])
+    
+    with tab1:
+        st.markdown("""
+        ## 🚀 **دليل البدء السريع**
+        
+        ### 📋 **المتطلبات:**
+        - Python 3.8 أو أحدث
+        - اتصال بالإنترنت
+        - مفتاح Google AI (اختياري للميزات المتقدمة)
+        
+        ### ⚡ **التشغيل السريع:**
+        ```bash
+        # 1. تشغيل التطبيق
+        streamlit run app_enhanced.py
+        
+        # 2. فتح المتصفح على
+        http://localhost:8501
+        
+        # 3. البدء في المحادثة!
+        ```
+        
+        ### 🔑 **الإعداد الأولي:**
+        1. **إنشاء ملف `.env`** في مجلد المشروع
+        2. **إضافة المتغيرات الأساسية:**
+        ```
+        GOOGLE_API_KEY=your_google_api_key_here
+        PODCAST_API_BASE=https://businessbelarabi.360marketingtec.com/api/podcast
+        WP_BASE=https://businessbelarabi.com
+        ```
+        3. **إعادة تشغيل التطبيق**
+        
+        ### ✅ **التحقق من التشغيل:**
+        - تأكد من ظهور "Google AI: متصل" في الشريط الجانبي
+        - جرب طرح سؤال بسيط في صفحة المحادثة
+        - تحقق من صفحة "حالة النظام" للتأكد من صحة الإعدادات
+        """)
+    
+    with tab2:
+        st.markdown("""
+        ## 💬 **دليل استخدام المحادثة**
+        
+        ### 🎯 **طرح الأسئلة الفعّالة:**
+        
+        #### ✅ **أمثلة على أسئلة جيدة:**
+        - "كيف يمكنني تحسين استراتيجية التسويق الرقمي لمتجري الإلكتروني؟"
+        - "ما أفضل طرق إدارة فريق العمل عن بُعد؟"
+        - "كيف أحسب التدفق النقدي لمشروعي الناشئ؟"
+        
+        #### ❌ **تجنب الأسئلة العامة:**
+        - "كيف أنجح في الأعمال؟"
+        - "ما هو التسويق؟"
+        - "كيف أصبح غنياً؟"
+        
+        ### 🔍 **استخدام السياق:**
+        - فعّل خيار "استخدام السياق من البودكاست" للحصول على إجابات مدعومة بمحتوى حقيقي
+        - اضبط عدد النتائج حسب مدى التفصيل المطلوب
+        
+        ### 💡 **الأسئلة المقترحة:**
+        استخدم الأزرار المقترحة أسفل صندوق النص للحصول على أفكار للأسئلة
+        
+        ### 📝 **إدارة المحادثة:**
+        - استخدم زر "مسح المحادثة" لبدء جلسة جديدة
+        - راجع الردود السابقة في تبويب "تاريخ المحادثات"
+        - يمكنك إعادة استخدام الأسئلة السابقة من صفحة التاريخ
+        """)
+    
+    with tab3:
+        st.markdown("""
+        ## 📊 **إدارة البيانات والمحتوى**
+        
+        ### 🎙️ **استيراد حلقات البودكاست:**
+        1. اذهب إلى صفحة "تحليل البيانات"
+        2. اختر تبويب "بودكاست"  
+        3. حدد عدد الحلقات المراد استيرادها
+        4. انقر على "استيراد حلقات البودكاست"
+        5. راجع النتائج المعروضة
+        
+        ### 📝 **استيراد مقالات WordPress:**
+        1. في نفس الصفحة، اختر تبويب "مقالات WordPress"
+        2. حدد عدد المقالات
+        3. انقر على "استيراد مقالات WordPress"
+        
+        ### 📈 **مراقبة الإحصائيات:**
+        - عدد المحادثات اليومية والأسبوعية
+        - أوقات الاستجابة
+        - الجلسات الأكثر نشاطاً
+        - الرسوم البيانية للنشاط
+        
+        ### 🔍 **البحث في المحتوى:**
+        استخدم صفحة "تاريخ المحادثات" للبحث في:
+        - جميع المحادثات السابقة
+        - جلسات محددة
+        - كلمات مفتاحية معينة
+        """)
+    
+    with tab4:
+        st.markdown("""
+        ## 🔧 **الإعدادات المتقدمة**
+        
+        ### 🔑 **متغيرات البيئة المهمة:**
+        
+        #### متغيرات أساسية:
+        ```bash
+        GOOGLE_API_KEY=your_key          # مطلوب للذكاء الاصطناعي
+        PODCAST_API_BASE=podcast_url     # لاستيراد البودكاست
+        WP_BASE=wordpress_url            # لاستيراد المقالات
+        ```
+        
+        #### متغيرات الأداء:
+        ```bash
+        MAX_THREADS=4                    # عدد المسارات المتزامنة
+        BATCH_SIZE=10                    # حجم الدفعة في المعالجة
+        GEMINI_MODEL=gemini-1.5-pro     # نموذج Gemini المستخدم
+        ```
+        
+        #### متغيرات قواعد البيانات:
+        ```bash
+        QDRANT_URL=http://localhost:6333 # قاعدة البيانات الشعاعية
+        REDIS_URL=redis://localhost:6379 # ذاكرة التخزين المؤقت
+        ```
+        
+        ### 🗄️ **إدارة قاعدة البيانات:**
+        - يتم حفظ جميع المحادثات في ملف SQLite محلي
+        - مسار قاعدة البيانات: `business_bel_arabi.db`
+        - يتم إنشاء فهارس تلقائياً لتحسين الأداء
+        
+        ### 🔒 **الأمان والخصوصية:**
+        - لا يتم إرسال البيانات لخوادم خارجية إلا لـ Google AI
+        - المحادثات محفوظة محلياً فقط
+        - المفاتيح السرية مخفية في واجهة النظام
+        """)
+    
+    with tab5:
+        st.markdown("""
+        ## ❓ **الأسئلة الشائعة**
+        
+        ### 🔧 **المشاكل التقنية:**
+        
+        **س: التطبيق لا يعمل أو يظهر أخطاء؟**
+        ج: تأكد من:
+        - تثبيت جميع المتطلبات: `pip install -r requirements.txt`
+        - وجود ملف `.env` مع المتغيرات الصحيحة
+        - إصدار Python 3.8 أو أحدث
+        
+        **س: "Google AI غير متصل" رغم إضافة المفتاح؟**
+        ج: تأكد من:
+        - صحة مفتاح API في Google AI Studio
+        - إعادة تشغيل التطبيق بعد إضافة المفتاح
+        - عدم وجود مسافات إضافية في المفتاح
+        
+        **س: البودكاست أو WordPress لا يعمل؟**
+        ج: تحقق من:
+        - صحة روابط API في ملف `.env`
+        - اتصالك بالإنترنت
+        - حالة الخوادم في صفحة "حالة النظام"
+        
+        ### 💬 **استخدام المحادثة:**
+        
+        **س: كيف أحصل على إجابات أكثر دقة؟**
+        ج: 
+        - اطرح أسئلة محددة ومفصلة
+        - استخدم السياق من البودكاست
+        - اذكر تفاصيل مشروعك أو مجالك
+        
+        **س: هل يتذكر النظام المحادثات السابقة؟**
+        ج: نعم، يتم حفظ جميع المحادثات ويمكن الوصول إليها من صفحة "تاريخ المحادثات"
+        
+        **س: كيف أحذف محادثة أو جلسة؟**
+        ج: حالياً يمكن مسح المحادثة الحالية فقط. ميزة حذف الجلسات ستُضاف قريباً.
+        
+        ### 📊 **البيانات والمحتوى:**
+        
+        **س: كم عدد الحلقات التي يمكن استيرادها؟**
+        ج: يمكن استيراد حتى 50 حلقة في المرة الواحدة
+        
+        **س: هل يتم حفظ المحتوى المستورد؟**
+        ج: حالياً لا، لكن سيتم إضافة هذه الميزة مع قاعدة البيانات الشعاعية
+        
+        ### 🚀 **الميزات القادمة:**
+        - تكامل مع Qdrant للبحث الشعاعي
+        - حفظ المحتوى المستورد
+        - تصدير واستيراد المحادثات
+        - واجهة API منفصلة
+        - دعم ملفات متعددة
+        """)
+    
+    # Support and contact info
+    st.markdown("---")
+    st.markdown("""
+    ## 📞 **الدعم والتواصل**
+    
+    ### 🆘 **تحتاج مساعدة إضافية؟**
+    - 📧 **البريد الإلكتروني:** support@businessbelarabi.com
+    - 🌐 **الموقع:** https://businessbelarabi.com
+    - 🎙️ **البودكاست:** استمع لحلقاتنا للمزيد من النصائح
+    
+    ### 🐛 **الإبلاغ عن مشاكل:**
+    إذا واجهت أي مشاكل تقنية، يرجى تضمين:
+    - وصف المشكلة بالتفصيل
+    - خطوات إعادة إنتاج المشكلة
+    - رسائل الخطأ إن وجدت
+    - إعدادات نظامك (نوع المتصفح، إصدار Python، إلخ)
+    
+    ---
+    *تم تطوير هذا النظام بـ ❤️ لمساعدة رواد الأعمال العرب على النجاح*
+    """)
+
+def main():
+    """Main application function with enhanced error handling."""
+    try:
+        # Initialize session state
+        initialize_session_state()
+        
+        # Render sidebar and get current page
+        current_page = render_enhanced_sidebar()
+        
+        # Route to appropriate page
+        if current_page == "💬 Chat":
+            render_chat_page()
+        elif current_page == "📜 Chat History":
+            render_history_page()
+        elif current_page == "📊 Data Analysis":
+            render_data_analysis_page()
+        elif current_page == "⚙️ System Status":
+            render_system_status_page()
+        elif current_page == "📚 Help":
+            render_help_page()
+        
+        # Footer
+        st.markdown("---")
+        st.markdown("""
+        <div style="text-align: center; opacity: 0.7; padding: 1rem;">
+            🎙️ <strong>Business bel Arabi CEO Expert</strong> | 
+            Enhanced UI v2.0 | 
+            Made with ❤️ for Arab Entrepreneurs
+        </div>
+        """, unsafe_allow_html=True)
+        
+    except Exception as e:
+        st.error("❌ حدث خطأ في التطبيق")
+        st.error(f"تفاصيل الخطأ: {str(e)}")
+        
+        # Enhanced error reporting
+        with st.expander("🔍 تفاصيل تقنية للمطورين"):
+            st.text("Stack trace:")
+            st.text(traceback.format_exc())
+            
+            st.text("Session state keys:")
+            st.text(list(st.session_state.keys()))
+            
+            st.text("Environment variables:")
+            env_vars = ["GOOGLE_API_KEY", "PODCAST_API_BASE", "WP_BASE"]
+            for var in env_vars:
+                st.text(f"{var}: {'Set' if os.getenv(var) else 'Not set'}")
+
+if __name__ == "__main__":
+    main()
